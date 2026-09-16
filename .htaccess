@@ -1,0 +1,99 @@
+# GardenMuse - Apache config for GoDaddy shared hosting (cPanel)
+#
+# NOTE ON ROUTING
+# This site is a STATIC EXPORT. Every page is a real file on disk:
+#   /index.html
+#   /products/index.html
+#   /products/cocopeat-block/index.html
+#   /story/index.html
+#   /contact/index.html
+# It is NOT a single-page app, so it does NOT need the usual
+# "rewrite everything to /index.html" rule. Direct links, deep links and the
+# on-pack QR codes all resolve straight to a real file. Adding the SPA
+# fallback would actually hurt: genuine typos would silently return the home
+# page with a 200 status instead of a proper 404.
+#
+# Every block below is wrapped in <IfModule> so that a module the server does
+# not have is skipped instead of causing a 500 error.
+
+
+# ---------------------------------------------------------------- 404 page
+# Serve the site's own styled 404 instead of the bare Apache one.
+ErrorDocument 404 /404.html
+
+
+# --------------------------------------------------------------- redirects
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Send www to the bare domain so every link and QR code has one canonical
+  # address. Harmless if www is not set up: the rule simply never fires.
+  RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+  RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
+
+  # FORCE HTTPS - leave this commented until the SSL certificate shows
+  # "Active" in the GoDaddy dashboard. Turning it on before SSL works makes
+  # the whole site unreachable. The QR codes point at https://, so switch
+  # this on as soon as the certificate is live.
+  #
+  # RewriteCond %{HTTPS} !=on
+  # RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+
+# ------------------------------------------------------------ pretty URLs
+# Pages are built as folders, so /story is redirected to /story/ where the
+# index.html actually lives. This is Apache's default; stated for clarity.
+<IfModule mod_dir.c>
+  DirectorySlash On
+  DirectoryIndex index.html
+</IfModule>
+
+
+# ------------------------------------------------------------ compression
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml
+  AddOutputFilterByType DEFLATE application/javascript application/json
+  AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+
+# ---------------------------------------------------------------- caching
+<IfModule mod_expires.c>
+  ExpiresActive On
+
+  # Build assets carry a hash in the filename, so a new deploy produces new
+  # names. They can be cached indefinitely.
+  ExpiresByType text/css                  "access plus 1 year"
+  ExpiresByType application/javascript    "access plus 1 year"
+  ExpiresByType font/woff2                "access plus 1 year"
+
+  # Photography changes rarely.
+  ExpiresByType image/jpeg                "access plus 6 months"
+  ExpiresByType image/png                 "access plus 6 months"
+  ExpiresByType image/svg+xml             "access plus 6 months"
+  ExpiresByType image/x-icon              "access plus 6 months"
+
+  # HTML must revalidate, otherwise a copy fix would not appear for visitors
+  # who have already been to the site.
+  ExpiresByType text/html                 "access plus 0 seconds"
+</IfModule>
+
+
+# --------------------------------------------------------------- security
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # Never let a stale HTML page pin an old build's asset names.
+  <FilesMatch "\.html$">
+    Header set Cache-Control "public, max-age=0, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+
+# ------------------------------------------------------------------ misc
+# Do not expose directory listings for folders without an index.
+Options -Indexes
